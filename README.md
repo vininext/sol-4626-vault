@@ -99,13 +99,13 @@ mint::decimals = base_asset_mint.decimals
    ```bash
    # After deploying to mainnet, make the program immutable (no upgrade_authority)
    solana program set-upgrade-authority <PROGRAM_ID> -u <RPC_ENDPOINT> --final
----
+    ```
 
 ## Known Limitations
 
-1. No withdraw instruction or redeem of shares implemented yet
-2. Vault settings (like admin change, paused controls) not implemented
-3. Allocation instruction is a simple CPI transfer to an external ATA; no yield strategy logic
+1. No withdraw or redeem instruction implemented yet
+2. Vault configuration updates (admin change, pause toggles) not implemented yet
+3. Allocation instruction is a simple CPI transfer to an external ATA
 4. Only decimals-matching mints/base supported
 
 ### Known Performance Considerations
