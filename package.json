@@ -1,0 +1,28 @@
+{
+  "name": "sol-4626-vault",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@coral-xyz/anchor": "^0.32.1",
+    "@solana/spl-token": "^0.4.14",
+    "@solana/web3.js": "^1.98.4",
+    "bs58": "^6.0.0"
+  },
+  "devDependencies": {
+    "@types/chai": "^5.2.3",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^24.10.1",
+    "chai": "^6.2.1",
+    "mocha": "^11.7.5",
+    "prettier": "^3.7.4",
+    "ts-mocha": "^11.1.0",
+    "typescript": "^5.9.3"
+  }
+}
