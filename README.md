@@ -70,15 +70,21 @@ mint::decimals = base_asset_mint.decimals
    ```
 
 
-3. **Test**
+3. **Tests**
    ```bash
    # Starts local validator, deploys, runs tests, shuts down
    anchor test
-
-   # Run tests using existing validator running
+   ```
+   Run tests using running validator (stateful)
+   ```bash
+   # First, run the validator (reset to clear vault 1:1 state)
    solana-test-validator --reset
    # And then
    anchor test --skip-validator
+   ```
+   rust unit tests
+   ```bash
+   cargo test
    ```
 
 4. **Deploy to Localnet** (optional)
@@ -95,7 +101,7 @@ mint::decimals = base_asset_mint.decimals
    anchor deploy --provider.cluster mainnet
    ```
 
-6. Make Program Immutable (optional)
+6. **Make Program Immutable** (optional)
    ```bash
    # After deploying to mainnet, make the program immutable (no upgrade_authority)
    solana program set-upgrade-authority <PROGRAM_ID> -u <RPC_ENDPOINT> --final
