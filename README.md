@@ -68,8 +68,14 @@ mint::decimals = base_asset_mint.decimals
    # Sync generated program keypair with the Anchor project (declare_id! + Anchor.toml)
    anchor keys sync
    ```
-
-
+3. **Install Node dependencies**
+   ```bash
+   npm install
+   ```
+   or
+   ```bash
+   yarn install
+   ```
 3. **Tests**
    ```bash
    # Starts local validator, deploys, runs tests, shuts down
