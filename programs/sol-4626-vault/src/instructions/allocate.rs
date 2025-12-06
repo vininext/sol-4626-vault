@@ -5,6 +5,9 @@ use anchor_lang::Accounts;
 use anchor_spl::token_interface::{
     transfer_checked, Mint, TokenAccount, TokenInterface, TransferChecked,
 };
+use anchor_spl::token::ID as TOKEN_PROGRAM_ID;
+use anchor_spl::token_2022::ID as TOKEN_2022_PROGRAM_ID;
+
 /// Allocate accounts:
 /// - signer: vault admin
 /// - base_asset_mint: vault's base asset mint
@@ -40,6 +43,9 @@ pub struct Allocate<'info> {
         token::token_program = token_program,
     )]
     target_ata: Box<InterfaceAccount<'info, TokenAccount>>,
+    #[account(
+        constraint = token_program.key() == TOKEN_PROGRAM_ID || token_program.key() == TOKEN_2022_PROGRAM_ID
+    )]
     token_program: Interface<'info, TokenInterface>,
     system_program: Program<'info, System>,
 }

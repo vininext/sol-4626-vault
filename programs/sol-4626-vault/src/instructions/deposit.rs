@@ -5,6 +5,8 @@ use anchor_spl::associated_token::AssociatedToken;
 use anchor_spl::token_interface::{
     mint_to, transfer_checked, Mint, MintTo, TokenAccount, TokenInterface, TransferChecked,
 };
+use anchor_spl::token::ID as TOKEN_PROGRAM_ID;
+use anchor_spl::token_2022::ID as TOKEN_2022_PROGRAM_ID;
 
 /// Deposit accounts:
 /// - signer: depositor
@@ -61,6 +63,9 @@ pub struct Deposit<'info> {
         bump
     )]
     vault: Box<Account<'info, Vault>>,
+    #[account(
+        constraint = token_program.key() == TOKEN_PROGRAM_ID || token_program.key() == TOKEN_2022_PROGRAM_ID
+    )]
     token_program: Interface<'info, TokenInterface>,
     associated_token_program: Program<'info, AssociatedToken>,
     system_program: Program<'info, System>,
