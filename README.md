@@ -86,7 +86,7 @@ mint::decimals = base_asset_mint.decimals
    # First, run the validator (reset to clear vault 1:1 state)
    solana-test-validator --reset
    # And then
-   anchor test --skip-validator
+   anchor test --skip-local-validator
    ```
    rust unit tests
    ```bash
