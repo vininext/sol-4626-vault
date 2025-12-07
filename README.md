@@ -14,6 +14,8 @@ strategy.
 This program allows users to deposit a base asset token into a vault and receive shares representing their stake.
 Initialize can be called only once to set up the vault with a specific base asset mint.
 
+![design_draft](./design.png)
+
 **Instructions:**
 
 1. **Initialize Vault**: Sets up the vault with a base asset mint and creates a shares mint with matching decimals.
@@ -119,6 +121,8 @@ mint::decimals = base_asset_mint.decimals
 2. Vault configuration updates (admin change, pause toggles) not implemented yet
 3. Allocation instruction is a simple CPI transfer to an external ATA
 4. Only decimals-matching mints/base supported
+5. No fuzzy tests or property-based tests yet
+6. No CI workflow set up yet
 
 ### Known Performance Considerations
 1. Zero-copy not used: Avoided to preserve declarative constraints and overall readability, since zero-copy forces manual constraint validation via AccountLoader.
