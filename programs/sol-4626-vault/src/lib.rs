@@ -4,6 +4,7 @@ mod constant;
 mod instructions;
 mod state;
 mod util;
+mod tests;
 
 use instructions::*;
 
