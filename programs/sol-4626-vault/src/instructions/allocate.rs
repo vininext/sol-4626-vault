@@ -1,12 +1,13 @@
+use crate::constant::{SHARES_MINT_SEED, VAULT_SEED};
 use crate::state::Vault;
 use crate::util::Errors;
 use anchor_lang::prelude::*;
 use anchor_lang::Accounts;
+use anchor_spl::token::ID as TOKEN_PROGRAM_ID;
+use anchor_spl::token_2022::ID as TOKEN_2022_PROGRAM_ID;
 use anchor_spl::token_interface::{
     transfer_checked, Mint, TokenAccount, TokenInterface, TransferChecked,
 };
-use anchor_spl::token::ID as TOKEN_PROGRAM_ID;
-use anchor_spl::token_2022::ID as TOKEN_2022_PROGRAM_ID;
 
 /// Allocate accounts:
 /// - signer: vault admin
@@ -17,6 +18,7 @@ use anchor_spl::token_2022::ID as TOKEN_2022_PROGRAM_ID;
 /// - token_program
 /// - system_program
 #[derive(Accounts)]
+#[instruction(amount: u64, ticker: [u8; 16])]
 pub struct Allocate<'info> {
     #[account(mut, address = vault.admin)]
     signer: Signer<'info>,
@@ -33,7 +35,7 @@ pub struct Allocate<'info> {
     )]
     vault_base_asset_ata: Box<InterfaceAccount<'info, TokenAccount>>,
     #[account(
-        seeds = [b"vault"],
+        seeds = [VAULT_SEED.as_bytes(), &ticker[..]],
         bump
     )]
     vault: Box<Account<'info, Vault>>,
@@ -53,7 +55,7 @@ pub struct Allocate<'info> {
 /// Moves base assets from the vault's ATA to an external target ATA.
 /// The vault's accounting keeps total assets unchanged because funds
 /// are only being relocated (e.g., allocated to an external yield strategy),
-pub fn handle(ctx: Context<Allocate>, amount: u64) -> Result<()> {
+pub fn handle(ctx: Context<Allocate>, amount: u64, ticker: &[u8; 16]) -> Result<()> {
     require!(amount > 0, Errors::InvalidAmount);
     require!(!ctx.accounts.vault.allocate_paused, Errors::AllocatePaused);
     require!(
@@ -75,7 +77,7 @@ pub fn handle(ctx: Context<Allocate>, amount: u64) -> Result<()> {
         authority: ctx.accounts.vault.to_account_info(),
     };
 
-    let signer_seeds: &[&[&[u8]]] = &[&[b"vault", &[ctx.bumps.vault]]];
+    let signer_seeds: &[&[&[u8]]] = &[&[VAULT_SEED.as_bytes(), ticker, &[ctx.bumps.vault]]];
 
     let transfer_ctx = CpiContext::new_with_signer(
         ctx.accounts.token_program.to_account_info(),

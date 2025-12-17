@@ -1,9 +1,8 @@
+use crate::constant::{SHARES_MINT_SEED, VAULT_SEED};
 use crate::state::Vault;
 use anchor_lang::prelude::*;
 use anchor_spl::associated_token::AssociatedToken;
 use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
-use anchor_spl::token::ID as TOKEN_PROGRAM_ID;
-use anchor_spl::token_2022::ID as TOKEN_2022_PROGRAM_ID;
 
 /// Initialize accounts:
 /// - admin: vault admin (payer)
@@ -15,7 +14,7 @@ use anchor_spl::token_2022::ID as TOKEN_2022_PROGRAM_ID;
 /// - associated_token_program
 /// - system_program
 #[derive(Accounts)]
-#[instruction()]
+#[instruction(ticker: [u8;16])]
 pub struct Initialize<'info> {
     #[account(mut)]
     admin: Signer<'info>,
@@ -23,7 +22,7 @@ pub struct Initialize<'info> {
         init,
         payer = admin,
         space = 8 + Vault::MAX_SIZE,
-        seeds = [b"vault"],
+        seeds = [VAULT_SEED.as_bytes(), &ticker[..]],
         bump
     )]
     vault: Account<'info, Vault>,
@@ -44,20 +43,17 @@ pub struct Initialize<'info> {
         payer = admin,
         mint::decimals = base_asset_mint.decimals,
         mint::authority = vault.key(),
-        seeds = [b"shares_mint"],
+        seeds = [SHARES_MINT_SEED.as_bytes(), vault.key().as_ref()],
         bump
     )]
     shares_mint: InterfaceAccount<'info, Mint>,
-    #[account(
-        constraint = token_program.key() == TOKEN_PROGRAM_ID || token_program.key() == TOKEN_2022_PROGRAM_ID
-    )]
     token_program: Interface<'info, TokenInterface>,
     associated_token_program: Program<'info, AssociatedToken>,
     system_program: Program<'info, System>,
 }
 
 /// Initializes the vault account with the provided admin, shares mint, and base asset mint.
-/// 1:1 decimals for shares mint to base asset mint.
+/// Accepts ticker. One vault ticker per program.
 pub fn handle(ctx: Context<Initialize>) -> Result<()> {
     msg!(
         "initializing vault address: {} shares_mint: {} base_asset_mint: {}",

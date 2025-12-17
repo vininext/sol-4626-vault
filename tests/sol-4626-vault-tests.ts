@@ -21,6 +21,12 @@ describe("sol4626 end-to-end tests", () => {
     const depositor = Keypair.generate();
     const yieldTarget = Keypair.generate();
     const poorUser = Keypair.generate();
+    const ticker = tickerToBytes16("MYTOKEN");
+
+    const [vltPDA] =
+        PublicKey.findProgramAddressSync([Buffer.from(VAULT_SEED), Buffer.from(ticker)], program.programId)
+    const [sharesMintPDA] =
+        PublicKey.findProgramAddressSync([Buffer.from(SHARES_MINT_SEED), vltPDA.toBuffer()], program.programId)
 
     let baseAssetMint: PublicKey;
 
@@ -70,18 +76,14 @@ describe("sol4626 end-to-end tests", () => {
     });
 
     it("should initialize the vault properly", async () => {
-        // Accounts expected by Initialize:
-        // 1. admin          → Signer paying for the vault + shares_mint creation.
-        // 2. vault          → PDA holding vault config (admin, shares_mint, base_asset_mint).
-        // 3. base_asset_mint→ Existing SPL mint for the underlying asset (e.g. USDC).
-        // 4. vault_base_asset_ata → PDA's associated token account for holding base assets.
-        // 5. shares_mint    → New SPL mint for vault shares (decimals = base_asset_mint.decimals,
-        // 6. token_program  → SPL Token / Token-2022 program used for mint initialization.
-        // 7. associated_token_program → Program for creating the vault's ATA.
-        // 8. system_program → System program for account creation.
         try {
-            const sig = await program.methods.initialize().accounts({
+
+            const t = Array.from(ticker)
+            ticker.slice()
+            const sig = await program.methods.initialize(ticker).accounts({
                 admin: signer.publicKey,
+                vault: vltPDA,
+                sharesMint: sharesMintPDA,
                 baseAssetMint: baseAssetMint,
                 tokenProgram: TOKEN_PROGRAM_ID,
             })
@@ -100,11 +102,6 @@ describe("sol4626 end-to-end tests", () => {
             setTimeout(resolve, 200)
         })
 
-        const [vltPDA] =
-            PublicKey.findProgramAddressSync([Buffer.from(VAULT_SEED)], program.programId)
-        const [sharesMintPDA] =
-            PublicKey.findProgramAddressSync([Buffer.from(SHARES_MINT_SEED)], program.programId)
-
         const vlt = await program.account.vault.fetch(vltPDA);
 
         assert(vlt.admin.toString() == signer.publicKey.toString(), "invalid vault admin");
@@ -112,25 +109,13 @@ describe("sol4626 end-to-end tests", () => {
         assert(vlt.sharesMint.toString() == sharesMintPDA.toString(), "invalid shares mint");
     });
 
-    it("should make first deposit and mint shares", async () => {
-        // Accounts expected by Deposit:
-        // 1. signer → User depositing base assets; pays for ATA creation.
-        // 2. shares_mint → Vault share mint; must equal vault.shares_mint.
-        // 3. shares_ata → Signer's ATA to receive minted shares.
-        // 4. base_asset_mint → Underlying asset mint; must equal vault.base_asset_mint.
-        // 5. base_asset_ata → Signer's ATA holding the base asset to deposit.
-        // 6. vault_base_asset_ata → Vault PDA’s ATA that receives deposited assets.
-        // 7. vault → PDA with vault configuration and accounting.
-        // 8. token_program → SPL Token or Token-2022 program.
-        // 9. associated_token_program → Creates ATAs if missing.
-        // 10. system_program → Required for system-level account creation.
-        const [mintSharesPDA] = PublicKey.findProgramAddressSync([Buffer.from(SHARES_MINT_SEED)], program.programId)
-        const [vltPDA] = PublicKey.findProgramAddressSync([Buffer.from(VAULT_SEED)], program.programId)
 
+    it("should make first deposit and mint shares", async () => {
         try {
-            const sig = await program.methods.deposit(new BN(5_000_000)).accounts({
+            const sig = await program.methods.deposit(new BN(5_000_000), ticker).accounts({
                 signer: depositor.publicKey,
-                sharesMint: mintSharesPDA,
+                vault: vltPDA,
+                sharesMint: sharesMintPDA,
                 baseAssetMint: baseAssetMint,
                 tokenProgram: TOKEN_PROGRAM_ID,
             })
@@ -144,13 +129,13 @@ describe("sol4626 end-to-end tests", () => {
             const depositorMintAta = await getOrCreateAssociatedTokenAccount(
                 program.provider.connection,
                 depositor,
-                mintSharesPDA,
+                sharesMintPDA,
                 depositor.publicKey
             )
 
             const mintInfo = await getMint(
                 program.provider.connection,
-                mintSharesPDA
+                sharesMintPDA
             )
 
             const vlt = await program.account.vault.fetch(vltPDA);
@@ -165,32 +150,13 @@ describe("sol4626 end-to-end tests", () => {
     });
 
     it("should mint proportional shares on second deposit", async () => {
-        const [mintSharesPDA] = PublicKey.findProgramAddressSync(
-            [Buffer.from(SHARES_MINT_SEED)],
-            program.programId
-        );
-        const [vltPDA] = PublicKey.findProgramAddressSync(
-            [Buffer.from(VAULT_SEED)],
-            program.programId
-        );
-
-        // Accounts expected by Deposit:
-        // 1. signer → User depositing base assets; pays for ATA creation.
-        // 2. shares_mint → Vault share mint; must equal vault.shares_mint.
-        // 3. shares_ata → Signer's ATA to receive minted shares.
-        // 4. base_asset_mint → Underlying asset mint; must equal vault.base_asset_mint.
-        // 5. base_asset_ata → Signer's ATA holding the base asset to deposit.
-        // 6. vault_base_asset_ata → Vault PDA’s ATA that receives deposited assets.
-        // 7. vault → PDA with vault configuration and accounting.
-        // 8. token_program → SPL Token or Token-2022 program.
-        // 9. associated_token_program → Creates ATAs if missing.
-        // 10. system_program → Required for system-level account creation.
         try {
             const sig = await program.methods
-                .deposit(new BN(5_000_000))
+                .deposit(new BN(5_000_000), ticker)
                 .accounts({
                     signer: depositor.publicKey,
-                    sharesMint: mintSharesPDA,
+                    vault: vltPDA,
+                    sharesMint: sharesMintPDA,
                     baseAssetMint: baseAssetMint,
                     tokenProgram: TOKEN_PROGRAM_ID,
                 })
@@ -210,13 +176,13 @@ describe("sol4626 end-to-end tests", () => {
         })
 
         // Shares mint info
-        const mintInfo = await getMint(conn, mintSharesPDA);
+        const mintInfo = await getMint(conn, sharesMintPDA);
 
         // Depositor's shares ATA
         const depositorMintAta = await getOrCreateAssociatedTokenAccount(
             conn,
             depositor,
-            mintSharesPDA,
+            sharesMintPDA,
             depositor.publicKey
         );
 
@@ -228,29 +194,14 @@ describe("sol4626 end-to-end tests", () => {
     });
 
     it("should fail deposit when amount is zero", async () => {
-        const [mintSharesPDA] = PublicKey.findProgramAddressSync(
-            [Buffer.from(SHARES_MINT_SEED)],
-            program.programId
-        );
-
-        // Accounts expected by Deposit:
-        // 1. signer → User depositing base assets; pays for ATA creation.
-        // 2. shares_mint → Vault share mint; must equal vault.shares_mint.
-        // 3. shares_ata → Signer's ATA to receive minted shares.
-        // 4. base_asset_mint → Underlying asset mint; must equal vault.base_asset_mint.
-        // 5. base_asset_ata → Signer's ATA holding the base asset to deposit.
-        // 6. vault_base_asset_ata → Vault PDA’s ATA that receives deposited assets.
-        // 7. vault → PDA with vault configuration and accounting.
-        // 8. token_program → SPL Token or Token-2022 program.
-        // 9. associated_token_program → Creates ATAs if missing.
-        // 10. system_program → Required for system-level account creation.
         let threw = false;
         try {
             await program.methods
-                .deposit(new BN(0))
+                .deposit(new BN(0), ticker)
                 .accounts({
                     signer: depositor.publicKey,
-                    sharesMint: mintSharesPDA,
+                    vault: vltPDA,
+                    sharesMint: sharesMintPDA,
                     baseAssetMint: baseAssetMint,
                     tokenProgram: TOKEN_PROGRAM_ID,
                 })
@@ -264,29 +215,14 @@ describe("sol4626 end-to-end tests", () => {
     });
 
     it("should fail deposit when user has insufficient base asset balance", async () => {
-        const [mintSharesPDA] = PublicKey.findProgramAddressSync(
-            [Buffer.from(SHARES_MINT_SEED)],
-            program.programId
-        );
-
-        // Accounts expected by Deposit:
-        // 1. signer → User depositing base assets; pays for ATA creation.
-        // 2. shares_mint → Vault share mint; must equal vault.shares_mint.
-        // 3. shares_ata → Signer's ATA to receive minted shares.
-        // 4. base_asset_mint → Underlying asset mint; must equal vault.base_asset_mint.
-        // 5. base_asset_ata → Signer's ATA holding the base asset to deposit.
-        // 6. vault_base_asset_ata → Vault PDA’s ATA that receives deposited assets.
-        // 7. vault → PDA with vault configuration and accounting.
-        // 8. token_program → SPL Token or Token-2022 program.
-        // 9. associated_token_program → Creates ATAs if missing.
-        // 10. system_program → Required for system-level account creation.
         let threw = false;
         try {
             await program.methods
                 .deposit(new BN(1_000_000)) // 1 base token
                 .accounts({
                     signer: poorUser.publicKey,
-                    sharesMint: mintSharesPDA,
+                    vault: vltPDA,
+                    sharesMint: sharesMintPDA,
                     baseAssetMint: baseAssetMint,
                     tokenProgram: TOKEN_PROGRAM_ID,
                 })
@@ -306,21 +242,13 @@ describe("sol4626 end-to-end tests", () => {
             yieldTarget.publicKey
         );
 
-        const [vltPDA] = PublicKey.findProgramAddressSync([Buffer.from(VAULT_SEED)], program.programId);
         const vltBefore = await program.account.vault.fetch(vltPDA);
 
-        // Accounts expected by Allocate:
-        // 1. signer → Vault admin; only the admin can allocate funds.
-        // 2. base_asset_mint → Underlying asset mint; must equal vault.base_asset_mint.
-        // 3. vault_base_asset_ata → Vault PDA’s ATA holding base assets to be allocated.
-        // 4. vault → PDA with vault configuration and authority seeds.
-        // 5. target_ata → Destination ATA that receives the allocated base assets.
-        // 6. token_program → SPL Token or Token-2022 program.
-        // 7. system_program → Required for system-level account operations.
         try {
-            const sig = await program.methods.allocate(new BN(2_000_000)).accounts({
+            const sig = await program.methods.allocate(new BN(2_000_000), ticker).accounts({
                 signer: signer.publicKey,
                 baseAssetMint: baseAssetMint,
+                vault: vltPDA,
                 targetAta: yieldTargetBaseMintAta.address, // For testing, allocate back to signer's base asset ATA
                 tokenProgram: TOKEN_PROGRAM_ID,
             })
@@ -376,14 +304,6 @@ describe("sol4626 end-to-end tests", () => {
             yieldTarget.publicKey
         );
 
-        // Accounts expected by Allocate:
-        // 1. signer → Vault admin; only the admin can allocate funds.
-        // 2. base_asset_mint → Underlying asset mint; must equal vault.base_asset_mint.
-        // 3. vault_base_asset_ata → Vault PDA’s ATA holding base assets to be allocated.
-        // 4. vault → PDA with vault configuration and authority seeds.
-        // 5. target_ata → Destination ATA that receives the allocated base assets.
-        // 6. token_program → SPL Token or Token-2022 program.
-        // 7. system_program → Required for system-level account operations.
         let threw = false;
         try {
             await program.methods
@@ -403,3 +323,18 @@ describe("sol4626 end-to-end tests", () => {
         assert.isTrue(threw, "allocate called by non-admin should fail");
     });
 })
+
+function tickerToBytes16(ticker: string): number[] {
+    const bytes = new TextEncoder().encode(ticker.toUpperCase());
+
+    if (bytes.length > 16) {
+        throw new Error("Ticker too long");
+    }
+
+    const out = new Array(16).fill(0);
+    for (let i = 0; i < bytes.length; i++) {
+        out[i] = bytes[i];
+    }
+
+    return out;
+}

@@ -18,4 +18,6 @@ pub enum Errors {
     DepositPaused,
     #[msg("Allocations are currently paused")]
     AllocatePaused,
+    #[msg("Invalid Ticker")]
+    InvalidTicker,
 }

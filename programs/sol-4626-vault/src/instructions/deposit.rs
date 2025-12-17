@@ -1,3 +1,4 @@
+use crate::constant::{SHARES_MINT_SEED, VAULT_SEED};
 use crate::state::Vault;
 use crate::util::{convert_to_shares, Errors};
 use anchor_lang::prelude::*;
@@ -5,8 +6,6 @@ use anchor_spl::associated_token::AssociatedToken;
 use anchor_spl::token_interface::{
     mint_to, transfer_checked, Mint, MintTo, TokenAccount, TokenInterface, TransferChecked,
 };
-use anchor_spl::token::ID as TOKEN_PROGRAM_ID;
-use anchor_spl::token_2022::ID as TOKEN_2022_PROGRAM_ID;
 
 /// Deposit accounts:
 /// - signer: depositor
@@ -20,14 +19,17 @@ use anchor_spl::token_2022::ID as TOKEN_2022_PROGRAM_ID;
 /// - associated_token_program
 /// - system_program
 #[derive(Accounts)]
-#[instruction()]
+#[instruction(amount: u64, ticker: [u8; 16])]
 pub struct Deposit<'info> {
     #[account(mut)]
     signer: Signer<'info>,
     #[account(
         mut,
         mint::token_program = token_program,
-        address = vault.shares_mint
+        mint::authority = vault.key(),
+        address = vault.shares_mint,
+        seeds = [SHARES_MINT_SEED.as_bytes(), vault.key().as_ref()],
+        bump
     )]
     shares_mint: Box<InterfaceAccount<'info, Mint>>,
     #[account(
@@ -59,13 +61,10 @@ pub struct Deposit<'info> {
     vault_base_asset_ata: Box<InterfaceAccount<'info, TokenAccount>>,
     #[account(
         mut,
-        seeds = [b"vault"],
+        seeds = [VAULT_SEED.as_bytes(), &ticker[..]],
         bump
     )]
     vault: Box<Account<'info, Vault>>,
-    #[account(
-        constraint = token_program.key() == TOKEN_PROGRAM_ID || token_program.key() == TOKEN_2022_PROGRAM_ID
-    )]
     token_program: Interface<'info, TokenInterface>,
     associated_token_program: Program<'info, AssociatedToken>,
     system_program: Program<'info, System>,
@@ -73,7 +72,7 @@ pub struct Deposit<'info> {
 
 /// Process a deposit: validate amount, transfer base asset to vault, mint shares.
 /// - amount: amount of base asset to deposit
-pub fn handle(ctx: Context<Deposit>, amount: u64) -> Result<()> {
+pub fn handle(ctx: Context<Deposit>, amount: u64, ticker: &[u8; 16]) -> Result<()> {
     let vlt = &mut ctx.accounts.vault;
 
     require!(
@@ -83,11 +82,7 @@ pub fn handle(ctx: Context<Deposit>, amount: u64) -> Result<()> {
     require!(amount > 0, Errors::ZeroDeposit);
     require!(!vlt.deposit_paused, Errors::DepositPaused);
 
-    msg!(
-        "depositing {} base assets into vault {}",
-        amount,
-        vlt.key()
-    );
+    msg!("depositing {} base assets into vault {}", amount, vlt.key());
 
     let total_shares = ctx.accounts.shares_mint.supply;
     let total_assets = vlt.total_base_assets;
@@ -114,7 +109,7 @@ pub fn handle(ctx: Context<Deposit>, amount: u64) -> Result<()> {
         to: ctx.accounts.shares_ata.to_account_info(),
         authority: vlt.to_account_info(),
     };
-    let vlt_seeds: &[&[&[u8]]] = &[&[b"vault", &[ctx.bumps.vault]]];
+    let vlt_seeds: &[&[&[u8]]] = &[&[VAULT_SEED.as_bytes(), ticker, &[ctx.bumps.vault]]];
     let mint_ctx = CpiContext::new_with_signer(
         ctx.accounts.token_program.to_account_info(),
         mint_accounts,
