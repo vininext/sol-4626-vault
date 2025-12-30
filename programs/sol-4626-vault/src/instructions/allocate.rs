@@ -1,10 +1,8 @@
-use crate::constant::{SHARES_MINT_SEED, VAULT_SEED};
+use crate::constant::{VAULT_AUTHORITY_SEED};
 use crate::state::Vault;
 use crate::util::Errors;
 use anchor_lang::prelude::*;
 use anchor_lang::Accounts;
-use anchor_spl::token::ID as TOKEN_PROGRAM_ID;
-use anchor_spl::token_2022::ID as TOKEN_2022_PROGRAM_ID;
 use anchor_spl::token_interface::{
     transfer_checked, Mint, TokenAccount, TokenInterface, TransferChecked,
 };
@@ -20,34 +18,31 @@ use anchor_spl::token_interface::{
 #[derive(Accounts)]
 #[instruction(amount: u64, ticker: [u8; 16])]
 pub struct Allocate<'info> {
-    #[account(mut, address = vault.admin)]
-    signer: Signer<'info>,
+    #[account(mut)]
+    admin: Signer<'info>,
+    #[account(mut,
+        has_one = base_asset_mint,
+        has_one = vault_authority,
+        has_one = vault_base_asset_ata,
+        has_one = token_program,
+        has_one = admin
+    )]
+    vault: AccountLoader<'info, Vault>,
+    /// CHECK: vault authority checked (has_one)
+    #[account(mut)]
+    vault_authority: AccountInfo<'info>,
     #[account(
         mint::token_program = token_program,
-        address = vault.base_asset_mint
     )]
     base_asset_mint: Box<InterfaceAccount<'info, Mint>>,
-    #[account(
-        mut,
-        associated_token::mint = base_asset_mint,
-        associated_token::authority = vault,
-        associated_token::token_program = token_program
-    )]
+    #[account(mut)]
     vault_base_asset_ata: Box<InterfaceAccount<'info, TokenAccount>>,
-    #[account(
-        seeds = [VAULT_SEED.as_bytes(), &ticker[..]],
-        bump
-    )]
-    vault: Box<Account<'info, Vault>>,
     #[account(
         mut,
         token::mint = base_asset_mint,
         token::token_program = token_program,
     )]
     target_ata: Box<InterfaceAccount<'info, TokenAccount>>,
-    #[account(
-        constraint = token_program.key() == TOKEN_PROGRAM_ID || token_program.key() == TOKEN_2022_PROGRAM_ID
-    )]
     token_program: Interface<'info, TokenInterface>,
     system_program: Program<'info, System>,
 }
@@ -55,9 +50,12 @@ pub struct Allocate<'info> {
 /// Moves base assets from the vault's ATA to an external target ATA.
 /// The vault's accounting keeps total assets unchanged because funds
 /// are only being relocated (e.g., allocated to an external yield strategy),
-pub fn handle(ctx: Context<Allocate>, amount: u64, ticker: &[u8; 16]) -> Result<()> {
+/// This is just a poc, better way of doing that is to manage idle and in_use assets
+pub fn handle(ctx: Context<Allocate>, amount: u64) -> Result<()> {
+    let vlt = ctx.accounts.vault.load()?;
+
     require!(amount > 0, Errors::InvalidAmount);
-    require!(!ctx.accounts.vault.allocate_paused, Errors::AllocatePaused);
+    require!(vlt.deposit_paused == 0, Errors::AllocatePaused);
     require!(
         amount <= ctx.accounts.vault_base_asset_ata.amount,
         Errors::InsufficientBaseAssetBalance
@@ -77,12 +75,16 @@ pub fn handle(ctx: Context<Allocate>, amount: u64, ticker: &[u8; 16]) -> Result<
         authority: ctx.accounts.vault.to_account_info(),
     };
 
-    let signer_seeds: &[&[&[u8]]] = &[&[VAULT_SEED.as_bytes(), ticker, &[ctx.bumps.vault]]];
-
+    let vlt_address = ctx.accounts.vault.key();
+    let vlt_auth_seeds: &[&[&[u8]]] = &[&[
+        VAULT_AUTHORITY_SEED.as_bytes(),
+        vlt_address.as_ref(),
+        &[vlt.vault_authority_bump],
+    ]];
     let transfer_ctx = CpiContext::new_with_signer(
         ctx.accounts.token_program.to_account_info(),
         transfer_accounts,
-        signer_seeds,
+        vlt_auth_seeds,
     );
 
     transfer_checked(transfer_ctx, amount, ctx.accounts.base_asset_mint.decimals)?;

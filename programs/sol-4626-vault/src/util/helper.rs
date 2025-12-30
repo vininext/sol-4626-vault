@@ -25,36 +25,6 @@ pub fn convert_to_shares(deposit_amount: u64, total_assets: u64, total_shares: u
         .map_err(|_| Errors::MathOverflow)?)
 }
 
-pub fn is_valid_ticker(ticker: &[u8; 16]) -> bool {
-    if ticker[0] == 0 {
-        return false;
-    }
-
-    let mut seen_ticker = false;
-    let mut size = 0;
-
-    for &b in ticker.iter() {
-        if b == 0 {
-            seen_ticker = true;
-            continue;
-        }
-
-        // does not allow 0 in the middle of the ticker
-        if seen_ticker {
-            return false;
-        }
-
-        //allows tickers A-B 0-9 - _
-        if !(b'A'..=b'Z').contains(&b) && !(b'0'..=b'9').contains(&b) && b'-' != b && b'_' != b {
-            return false;
-        }
-
-        size += 1;
-    }
-
-    size >= 3
-}
-
 #[cfg(test)]
 mod test_convert_to_shares {
     use super::*;
@@ -117,48 +87,5 @@ mod test_convert_to_shares {
 
         let res = convert_to_shares(deposit, total_assets, total_shares);
         assert!(res.is_err());
-    }
-}
-
-#[cfg(test)]
-mod test_validate_ticker {
-    use crate::util::is_valid_ticker;
-
-    #[test]
-    fn valid_ticker() {
-        let mut ticker = [0u8; 16];
-        let src = b"MYTOKEN";
-        ticker[..src.len()].copy_from_slice(src);
-        assert!(is_valid_ticker(&ticker));
-    }
-
-    #[test]
-    fn invalid_ticker_starting_with_zero() {
-        let ticker = b"\0\0MYTOKEN\0\0\0\0\0\0\0";
-        assert!(!is_valid_ticker(&ticker));
-    }
-
-    #[test]
-    fn invalid_ticker_wrong_minimum_size() {
-        let ticker = b"M\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
-        assert!(!is_valid_ticker(&ticker));
-    }
-
-    #[test]
-    fn invalid_ticker_invalid_characters() {
-        let ticker = b"MYTOK&N\0\0\0\0\0\0\0\0\0";
-        assert!(!is_valid_ticker(&ticker));
-    }
-
-    #[test]
-    fn invalid_ticker_zero_in_the_middle() {
-        let ticker = b"MYT\0OKEN\0\0\0\0\0\0\0\0";
-        assert!(!is_valid_ticker(&ticker));
-    }
-
-    #[test]
-    fn invalid_ticker_lower_case() {
-        let ticker = b"mytoken\0\0\0\0\0\0\0\0\0";
-        assert!(!is_valid_ticker(&ticker));
     }
 }

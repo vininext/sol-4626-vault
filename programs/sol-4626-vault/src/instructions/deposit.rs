@@ -1,4 +1,4 @@
-use crate::constant::{SHARES_MINT_SEED, VAULT_SEED};
+use crate::constant::{VAULT_AUTHORITY_SEED};
 use crate::state::Vault;
 use crate::util::{convert_to_shares, Errors};
 use anchor_lang::prelude::*;
@@ -23,15 +23,19 @@ use anchor_spl::token_interface::{
 pub struct Deposit<'info> {
     #[account(mut)]
     signer: Signer<'info>,
-    #[account(
-        mut,
-        mint::token_program = token_program,
-        mint::authority = vault.key(),
-        address = vault.shares_mint,
-        seeds = [SHARES_MINT_SEED.as_bytes(), vault.key().as_ref()],
-        bump
-    )]
+    #[account(mut)]
     shares_mint: Box<InterfaceAccount<'info, Mint>>,
+    #[account(mut,
+        has_one = shares_mint,
+        has_one = base_asset_mint,
+        has_one = vault_authority,
+        has_one = vault_base_asset_ata,
+        has_one = token_program
+    )]
+    vault: AccountLoader<'info, Vault>,
+    /// CHECK: vault authority checked (has_one)
+    #[account(mut)]
+    vault_authority: AccountInfo<'info>,
     #[account(
         init_if_needed,
         payer = signer,
@@ -40,10 +44,7 @@ pub struct Deposit<'info> {
         associated_token::token_program = token_program
     )]
     shares_ata: Box<InterfaceAccount<'info, TokenAccount>>,
-    #[account(
-        mint::token_program = token_program,
-        address = vault.base_asset_mint
-    )]
+    #[account()]
     base_asset_mint: Box<InterfaceAccount<'info, Mint>>,
     #[account(
         mut,
@@ -52,19 +53,8 @@ pub struct Deposit<'info> {
         associated_token::token_program = token_program
     )]
     base_asset_ata: Box<InterfaceAccount<'info, TokenAccount>>,
-    #[account(
-        mut,
-        associated_token::mint = base_asset_mint,
-        associated_token::authority = vault,
-        associated_token::token_program = token_program
-    )]
+    #[account(mut)]
     vault_base_asset_ata: Box<InterfaceAccount<'info, TokenAccount>>,
-    #[account(
-        mut,
-        seeds = [VAULT_SEED.as_bytes(), &ticker[..]],
-        bump
-    )]
-    vault: Box<Account<'info, Vault>>,
     token_program: Interface<'info, TokenInterface>,
     associated_token_program: Program<'info, AssociatedToken>,
     system_program: Program<'info, System>,
@@ -72,17 +62,21 @@ pub struct Deposit<'info> {
 
 /// Process a deposit: validate amount, transfer base asset to vault, mint shares.
 /// - amount: amount of base asset to deposit
-pub fn handle(ctx: Context<Deposit>, amount: u64, ticker: &[u8; 16]) -> Result<()> {
-    let vlt = &mut ctx.accounts.vault;
+pub fn handle(ctx: Context<Deposit>, amount: u64) -> Result<()> {
+    let mut vlt = ctx.accounts.vault.load_mut()?;
 
     require!(
         ctx.accounts.base_asset_ata.amount >= amount,
         Errors::InsufficientBaseAssetBalance
     );
     require!(amount > 0, Errors::ZeroDeposit);
-    require!(!vlt.deposit_paused, Errors::DepositPaused);
+    require!(vlt.deposit_paused == 0, Errors::DepositPaused);
 
-    msg!("depositing {} base assets into vault {}", amount, vlt.key());
+    msg!(
+        "depositing {} base assets into vault {}",
+        amount,
+        ctx.accounts.vault.key()
+    );
 
     let total_shares = ctx.accounts.shares_mint.supply;
     let total_assets = vlt.total_base_assets;
@@ -104,16 +98,21 @@ pub fn handle(ctx: Context<Deposit>, amount: u64, ticker: &[u8; 16]) -> Result<(
     transfer_checked(transfer_ctx, amount, ctx.accounts.base_asset_mint.decimals)?;
 
     // Mint shares to user
+    let vlt_address = ctx.accounts.vault.key();
     let mint_accounts = MintTo {
         mint: ctx.accounts.shares_mint.to_account_info(),
         to: ctx.accounts.shares_ata.to_account_info(),
-        authority: vlt.to_account_info(),
+        authority: ctx.accounts.vault_authority.to_account_info(),
     };
-    let vlt_seeds: &[&[&[u8]]] = &[&[VAULT_SEED.as_bytes(), ticker, &[ctx.bumps.vault]]];
+    let vlt_auth_seeds: &[&[&[u8]]] = &[&[
+        VAULT_AUTHORITY_SEED.as_bytes(),
+        vlt_address.as_ref(),
+        &[vlt.vault_authority_bump],
+    ]];
     let mint_ctx = CpiContext::new_with_signer(
         ctx.accounts.token_program.to_account_info(),
         mint_accounts,
-        vlt_seeds,
+        vlt_auth_seeds,
     );
     mint_to(mint_ctx, to_mint)?;
 

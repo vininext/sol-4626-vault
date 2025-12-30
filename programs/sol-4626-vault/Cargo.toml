@@ -23,6 +23,9 @@ custom-panic = []
 [dependencies]
 anchor-lang = { version = "0.32.1", features = ["init-if-needed"] }
 anchor-spl = "0.32.1"
+borsh = "0.10.4"
+bytemuck = { version = "1.24.0", features = ["min_const_generics"] }
+
 
 
 [lints.rust]
@@ -30,4 +33,6 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"
 
 [dev-dependencies]
 litesvm = "0.8.2"
+litesvm-token = "0.8.2"
+sha2 = "0.10.9"
 solana-sdk = "3.0.0"

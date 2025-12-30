@@ -1,31 +1,22 @@
-use crate::constant::{SHARES_MINT_SEED, VAULT_SEED};
+use crate::constant::{SHARES_MINT_SEED, VAULT_AUTHORITY_SEED};
 use crate::state::Vault;
 use anchor_lang::prelude::*;
 use anchor_spl::associated_token::AssociatedToken;
 use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 
-/// Initialize accounts:
-/// - admin: vault admin (payer)
-/// - vault: vault PDA
-/// - base_asset_mint: base token asset mint
-/// - vault_base_asset_ata: vault's ATA for base assets
-/// - shares_mint: vault's shares mint
-/// - token_program
-/// - associated_token_program
-/// - system_program
 #[derive(Accounts)]
-#[instruction(ticker: [u8;16])]
+#[instruction()]
 pub struct Initialize<'info> {
     #[account(mut)]
     admin: Signer<'info>,
+    #[account(zero)]
+    vault: AccountLoader<'info, Vault>,
+    /// CHECK: PDA used only as signing authority
     #[account(
-        init,
-        payer = admin,
-        space = 8 + Vault::MAX_SIZE,
-        seeds = [VAULT_SEED.as_bytes(), &ticker[..]],
+        seeds = [VAULT_AUTHORITY_SEED.as_bytes(), vault.key().as_ref()],
         bump
     )]
-    vault: Account<'info, Vault>,
+    vault_authority: AccountInfo<'info>,
     #[account(
         mint::token_program = token_program
     )]
@@ -34,7 +25,7 @@ pub struct Initialize<'info> {
         init,
         payer = admin,
         associated_token::mint = base_asset_mint,
-        associated_token::authority = vault,
+        associated_token::authority = vault_authority,
         associated_token::token_program = token_program
     )]
     vault_base_asset_ata: Box<InterfaceAccount<'info, TokenAccount>>,
@@ -42,8 +33,8 @@ pub struct Initialize<'info> {
         init,
         payer = admin,
         mint::decimals = base_asset_mint.decimals,
-        mint::authority = vault.key(),
-        seeds = [SHARES_MINT_SEED.as_bytes(), vault.key().as_ref()],
+        mint::authority = vault_authority,
+        seeds = [SHARES_MINT_SEED.as_bytes(), vault_authority.key().as_ref()],
         bump
     )]
     shares_mint: InterfaceAccount<'info, Mint>,
@@ -52,26 +43,39 @@ pub struct Initialize<'info> {
     system_program: Program<'info, System>,
 }
 
-/// Initializes the vault account with the provided admin, shares mint, and base asset mint.
-/// Accepts ticker. One vault ticker per program.
 pub fn handle(ctx: Context<Initialize>) -> Result<()> {
     msg!(
-        "initializing vault address: {} shares_mint: {} base_asset_mint: {}",
+        "initializing vault address: {} vault authority {} shares_mint: {} base_asset_mint: {}",
         ctx.accounts.vault.key(),
+        ctx.accounts.vault_authority.key(),
         ctx.accounts.shares_mint.key(),
         ctx.accounts.base_asset_mint.key()
     );
 
-    let vlt = &mut ctx.accounts.vault;
+    let vlt = &mut ctx.accounts.vault.load_init()?;
 
     let admin = ctx.accounts.admin.key();
+    let vault_authority = ctx.accounts.vault_authority.key();
     let shares_mint = ctx.accounts.shares_mint.key();
+    let shares_mint_decimals = ctx.accounts.shares_mint.decimals;
     let base_asset_mint = ctx.accounts.base_asset_mint.key();
+    let vault_base_asset_ata = ctx.accounts.vault_base_asset_ata.key();
+    let token_program = ctx.accounts.token_program.key();
 
-    vlt.initialize(admin, shares_mint, base_asset_mint, ctx.bumps.vault)?;
+    vlt.initialize(
+        admin,
+        vault_authority,
+        shares_mint,
+        base_asset_mint,
+        vault_base_asset_ata,
+        token_program,
+        shares_mint_decimals,
+        ctx.bumps.vault_authority,
+        ctx.bumps.shares_mint,
+    )?;
 
     emit!(InitializeEvent {
-        vault: vlt.key(),
+        vault: ctx.accounts.vault.key(),
         admin,
         shares_mint,
         base_asset_mint,
